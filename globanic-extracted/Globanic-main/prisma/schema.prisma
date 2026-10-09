@@ -1,0 +1,1086 @@
+// ============================================================
+// GLOBANIC — Database Schema (Prisma / PostgreSQL)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------
+// ENUMS
+// ------------------------------------------------------------
+
+enum Role {
+  USER
+  PUBLISHER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum PublisherApplicationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  SUSPENDED
+}
+
+enum ResourceType {
+  COURS
+  MEMOIRE
+  ARTICLE
+  THESE
+  LIVRE
+}
+
+enum ResourceStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  PUBLISHED
+  REJECTED
+  CHANGES_REQUESTED
+  UNPUBLISHED
+}
+
+enum ReportType {
+  COPYRIGHT
+  SPAM
+  INCORRECT_INFO
+  BROKEN_FILE
+  INAPPROPRIATE
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum ModerationAction {
+  SUBMIT
+  APPROVE
+  REJECT
+  REQUEST_CHANGES
+  UNPUBLISH
+  DELETE
+  VERIFY_PUBLISHER
+  REJECT_PUBLISHER
+  SUSPEND_PUBLISHER
+  SUSPEND_USER
+  ACTIVATE_USER
+  CHANGE_ROLE
+  RESOLVE_REPORT
+  DISMISS_REPORT
+  CREATE_UNIVERSITY
+  UPDATE_UNIVERSITY
+  DELETE_UNIVERSITY
+  CREATE_DOMAIN
+  UPDATE_DOMAIN
+  DELETE_DOMAIN
+  FINALIZE_REVENUE_PERIOD
+  MARK_PAYOUT_PAID
+  // Phase 17: Publisher Payout Subsystem. Every state transition on a
+  // PublisherPayoutAccount or PublisherPayout writes one of these — same
+  // discipline as every other mutation in this app (see ModerationLog).
+  SUBMIT_PAYOUT_ACCOUNT
+  UPDATE_PAYOUT_ACCOUNT
+  VERIFY_PAYOUT_ACCOUNT
+  REJECT_PAYOUT_ACCOUNT
+  DEACTIVATE_PAYOUT_ACCOUNT
+  // Decrypting a stored payout account's sensitive fields is itself a
+  // security-relevant event (who looked at whose CCP number, and when) —
+  // it gets its own audit action even though it's a read, not a write.
+  REVEAL_PAYOUT_ACCOUNT_DETAILS
+  APPROVE_PAYOUT
+  MARK_PAYOUT_FAILED
+  SET_PUBLISHER_SHARE_PERCENTAGE
+  // Phase 13.5B: publisher explicitly designates which VERIFIED, active
+  // account should be used for their next payout. Read-only with
+  // respect to money (does not move or approve anything by itself), but
+  // still audited like every other payout-account mutation, since it
+  // directly determines where a future real payout is sent.
+  SET_PREFERRED_PAYOUT_ACCOUNT
+}
+
+enum NotificationType {
+  RESOURCE_APPROVED
+  RESOURCE_REJECTED
+  RESOURCE_CHANGES_REQUESTED
+  RESOURCE_MILESTONE
+  NEW_FOLLOWER
+  PUBLISHER_VERIFIED
+  PUBLISHER_REJECTED
+  PUBLISHER_SUSPENDED
+  REPORT_UPDATE
+  SYSTEM
+}
+
+// ------------------------------------------------------------
+// USERS / PROFILES / PUBLISHERS
+// ------------------------------------------------------------
+
+model User {
+  id            String        @id @default(cuid())
+  email         String        @unique
+  passwordHash  String?
+  role          Role          @default(USER)
+  status        AccountStatus @default(ACTIVE)
+  emailVerified DateTime?
+  // Phase 16A: durable, cross-device UI-language preference. Nullable —
+  // null means "no explicit choice stored yet", in which case the
+  // per-request cookie (or the app default) governs rendering; see
+  // src/lib/i18n/get-locale.ts. Setting this does NOT retroactively
+  // change the language of any academic content, and is never read by
+  // any RBAC/authorization check (see rbac.ts — locale is not, and must
+  // never become, a permission input).
+  preferredLocale Locale?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  profile             Profile?
+  publisherProfile    PublisherProfile?
+  publisherApplications PublisherApplication[]
+  reviewedApplications  PublisherApplication[] @relation("ApplicationReviewedBy")
+  authorLink          AuthorUser?
+  resourcesUploaded   Resource[]        @relation("UploadedBy")
+  resourceVersions    ResourceVersion[] @relation("VersionCreatedBy")
+  favorites           Favorite[]
+  followingAuthors    Follow[]          @relation("FollowerUser")
+  notifications       Notification[]
+  reports             Report[]          @relation("ReportedBy")
+  moderationLogs      ModerationLog[]   @relation("ModerationActor")
+  views               ResourceView[]
+  downloads           ResourceDownload[]
+  sessions            Session[]
+  accounts            Account[]
+  revenuePeriodsCreated RevenuePeriod[]
+  publisherPayouts    PublisherPayout[]
+  approvedPayouts     PublisherPayout[]        @relation("PayoutApprovedBy")
+  payoutAccounts      PublisherPayoutAccount[]
+  verifiedPayoutAccounts PublisherPayoutAccount[] @relation("PayoutAccountVerifiedBy")
+  referralLinks       PublisherReferralLink[]
+  referralAttributions ReferralAttribution[]
+
+  @@index([role])
+  @@index([status])
+}
+
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName    String
+  avatarUrl   String?
+  bio         String?
+  country     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PublisherProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  academicStatus  String?
+  universityId    String?
+  university      University? @relation(fields: [universityId], references: [id], onDelete: SetNull)
+  specialtyId     String?
+  specialty       Specialty?  @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  academicEmail   String?
+
+  // DEPRECATED (Phase 17): superseded by PublisherPayoutAccount, which
+  // supports multiple payout methods, encrypts sensitive fields at rest,
+  // and carries its own verification workflow + audit trail. These four
+  // columns are kept only so existing rows are not silently destroyed —
+  // no code path reads or writes them anymore. A one-off backfill script
+  // (not included here, since it would need real production data and a
+  // human decision on default verification status) should migrate any
+  // non-null bankRIB values into PublisherPayoutAccount before these
+  // columns are dropped in a future migration.
+  bankAccountHolder String?
+  bankName        String?
+  bankRIB         String?
+  paymentInfoUpdatedAt DateTime?
+
+  verifiedAt      DateTime?
+
+  // Phase 17: per-publisher override of the platform-default revenue
+  // share (see DEFAULT_PUBLISHER_SHARE_PERCENTAGE in
+  // revenue-period.service.ts). Null means "use the platform default" —
+  // this is NOT the same as 0, which would mean an admin deliberately
+  // set this publisher's share to zero. Set only through
+  // admin-user.actions.ts (payout:manage), never publisher-editable.
+  payoutSharePercentage Decimal? @db.Decimal(7, 4)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model PublisherApplication {
+  id                 String                      @id @default(cuid())
+  userId             String
+  user               User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName           String
+  universityId       String?
+  university         University?                 @relation(fields: [universityId], references: [id], onDelete: SetNull)
+  academicStatus     String
+  specialtyId        String?
+  specialty          Specialty?                  @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  academicEmail      String
+  additionalInfo     String?
+
+  proofFileKey         String?
+  proofFileUrl         String?
+  proofFileMimeType    String?
+  proofFileSize        Int?
+  proofFileChecksum    String?
+  proofOriginalFilename String?
+
+  status             PublisherApplicationStatus  @default(PENDING)
+  reviewedById       String?
+  reviewedBy         User?                       @relation("ApplicationReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt         DateTime?
+  rejectionReason    String?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  @@index([status])
+  @@index([userId])
+}
+
+// NextAuth-compatible tables (Auth.js)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+}
+
+// ------------------------------------------------------------
+// AUTHORS (independent from User)
+// ------------------------------------------------------------
+
+model Author {
+  id           String       @id @default(cuid())
+  slug         String       @unique
+  fullName     String
+  bio          String?
+  avatarUrl    String?
+  verified     Boolean      @default(false)
+  universityId String?
+  university   University?  @relation(fields: [universityId], references: [id])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  userLink        AuthorUser?
+  resources       ResourceAuthor[]
+  followers       Follow[]         @relation("FollowedAuthor")
+
+  @@index([universityId])
+}
+
+// Optional link Author <-> User (Author is NOT necessarily a User)
+model AuthorUser {
+  id       String @id @default(cuid())
+  authorId String @unique
+  author   Author @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------------------------------------
+// UNIVERSITIES / FACULTIES
+// ------------------------------------------------------------
+
+model University {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  name            String
+  city            String?
+  country         String?
+  logoUrl         String?
+  officialWebsite String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  faculties             Faculty[]
+  resources             Resource[]
+  authors               Author[]
+  publisherProfiles     PublisherProfile[]
+  publisherApplications PublisherApplication[]
+
+  @@index([country])
+}
+
+model Faculty {
+  id           String     @id @default(cuid())
+  name         String
+  universityId String
+  university   University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  resources    Resource[]
+
+  @@index([universityId])
+}
+
+// ------------------------------------------------------------
+// DOMAINS / SPECIALTIES
+// ------------------------------------------------------------
+
+model Domain {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  icon      String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  specialties Specialty[]
+  resources   Resource[]
+}
+
+model Specialty {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  domainId  String
+  domain    Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  order     Int      @default(0)
+
+  resources             Resource[]
+  publisherProfiles     PublisherProfile[]
+  publisherApplications PublisherApplication[]
+
+  @@index([domainId])
+}
+
+// Independent tagging axis, orthogonal to Domain/Specialty — e.g.
+// "Accès libre", "À la une", "Ressource recommandée". Many-to-many so a
+// resource can carry several tags without affecting its academic classification.
+model Category {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  resources ResourceCategory[]
+}
+
+model ResourceCategory {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, categoryId])
+  @@index([categoryId])
+}
+
+// ------------------------------------------------------------
+// RESOURCES (core entity)
+// ------------------------------------------------------------
+
+model Resource {
+  id            String         @id @default(cuid())
+  slug          String
+  type          ResourceType
+  title         String
+  abstract      String?
+  description   String?
+  keywords      String[]
+  level         String?
+  year          Int?
+  language      String?
+  status        ResourceStatus @default(DRAFT)
+  rejectionReason String?
+
+  domainId      String?
+  domain        Domain?        @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  specialtyId   String?
+  specialty     Specialty?     @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  universityId  String?
+  university    University?    @relation(fields: [universityId], references: [id], onDelete: SetNull)
+  facultyId     String?
+  faculty       Faculty?       @relation(fields: [facultyId], references: [id], onDelete: SetNull)
+
+  // Restrict: a user who has published resources cannot be hard-deleted —
+  // admins suspend accounts instead (status = SUSPENDED / DELETED), which
+  // keeps authorship and moderation history intact.
+  uploadedById  String
+  uploadedBy    User           @relation("UploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  coverImageKey        String?
+  coverImageUrl        String?
+  coverImageMimeType   String?
+  coverImageSize       Int?
+  coverImageChecksum   String?
+  copyrightConfirmedAt DateTime?
+
+  // Denormalized counters (recalculated periodically from tracking tables)
+  viewsCount     Int @default(0)
+  downloadsCount Int @default(0)
+  bookmarksCount Int @default(0)
+
+  // GENERATED ALWAYS AS (...) STORED tsvector, weighted title > keywords >
+  // abstract > description. Prisma's `Unsupported()` type intentionally
+  // means Prisma never manages this column's actual definition or its GIN
+  // index — both are owned entirely by
+  // prisma/migrations/20260821000000_add_resource_search_vector/migration.sql.
+  // `prisma migrate dev`/`generate` will never attempt to alter or revert
+  // it, by design of `Unsupported()`. See search.service.ts / postgres.provider.ts.
+  searchVector  Unsupported("tsvector")?
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  publishedAt   DateTime?
+
+  authors       ResourceAuthor[]
+  categories    ResourceCategory[]
+  versions      ResourceVersion[]
+  favorites     Favorite[]
+  reports       Report[]
+  moderationLogs ModerationLog[]
+  views         ResourceView[]
+  downloads     ResourceDownload[]
+
+  @@unique([type, slug])
+  @@index([status])
+  @@index([type])
+  @@index([domainId])
+  @@index([specialtyId])
+  @@index([universityId])
+  @@index([facultyId])
+  @@index([uploadedById])
+  @@index([publishedAt])
+  @@index([createdAt])
+  // Common publisher-dashboard query: "my resources with this status,
+  // most recent first" — composite index avoids a sort on the whole set.
+  @@index([uploadedById, status, createdAt])
+}
+
+// Many-to-many Resource <-> Author (supports multiple authors, ordered)
+model ResourceAuthor {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     Author   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  order      Int      @default(0)
+
+  @@unique([resourceId, authorId])
+  @@index([authorId])
+}
+
+// Versioning — never delete previous file versions
+model ResourceVersion {
+  id            String   @id @default(cuid())
+  resourceId    String
+  resource      Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  changeNote    String?
+  createdById   String
+  createdBy     User     @relation("VersionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt     DateTime @default(now())
+
+  file ResourceFile?
+
+  @@unique([resourceId, versionNumber])
+}
+
+model ResourceFile {
+  id                String          @id @default(cuid())
+  resourceVersionId String          @unique
+  resourceVersion   ResourceVersion @relation(fields: [resourceVersionId], references: [id], onDelete: Cascade)
+  storageKey        String
+  fileUrl           String
+  originalFilename  String?
+  mimeType          String
+  fileSize          Int
+  checksum          String
+  createdAt         DateTime        @default(now())
+}
+
+// ------------------------------------------------------------
+// TRACKING (real analytics, not counters++)
+// ------------------------------------------------------------
+
+// A "view" is financially sensitive data: it may eventually feed publisher
+// payouts. Every row is kept forever (raw layer, never deleted/overwritten)
+// regardless of eligibility — nothing is silently dropped. The flags below
+// let reads distinguish Raw (every row) / Valid (not a dedup duplicate) /
+// Eligible (valid AND not self AND not staff AND not a bot) without ever
+// destroying the underlying event. `Resource.viewsCount` only increments
+// for isEligible = true rows (see analytics-tracking.service.ts).
+model ResourceView {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  sessionId  String
+  ipHash     String?
+  country    String?
+  device     String?
+  referrer   String?
+
+  isDuplicate  Boolean @default(false) // same (resourceId, sessionId) within the dedup window
+  isSelfAccess Boolean @default(false) // viewer is the resource's own publisher
+  isStaffAccess Boolean @default(false) // viewer is ADMIN/SUPER_ADMIN (moderation, not audience)
+  isBot        Boolean @default(false) // basic User-Agent heuristic
+  isEligible   Boolean @default(false) // valid AND !self AND !staff AND !bot — feeds Resource.viewsCount
+
+  // Deliberately separate from `isEligible`. `isEligible` only answers
+  // "does this count as a real audience view" (anti-fraud/dedup). A future
+  // payout phase will almost certainly need additional rules on top of
+  // that (minimum watch time, geographic eligibility, payout-period
+  // windows, etc.) — this column reserves that concept without building
+  // it. NEVER computed, read, or relied upon before that phase exists.
+  payoutEligible Boolean?
+  qualifiedAt    DateTime?
+
+  // Phase 8.5 — Publisher Referral/Attribution. Nullable, additive,
+  // never backfilled (existing rows correctly have NULL — they genuinely
+  // had no attribution). Set once, at insert time, to whichever
+  // ReferralAttribution was active for this viewer/session at that
+  // moment — NEVER updated afterward even if that attribution is later
+  // superseded or expires. This is metadata about how the view arrived;
+  // it has zero relationship to isEligible/isDuplicate/isSelfAccess/
+  // isStaffAccess/isBot above (all computed with no awareness this field
+  // exists) and zero relationship to revenue/payout calculation, which
+  // reads Resource.uploadedById exclusively and never joins through this
+  // field. See ReferralAttribution below for the full design rationale.
+  referralAttributionId String?
+  referralAttribution    ReferralAttribution? @relation(fields: [referralAttributionId], references: [id], onDelete: SetNull)
+
+  createdAt  DateTime @default(now())
+
+  @@index([resourceId, createdAt])
+  @@index([resourceId, sessionId, createdAt])
+  @@index([resourceId, isEligible])
+  @@index([referralAttributionId])
+}
+
+// ------------------------------------------------------------
+// PUBLISHER REFERRAL / ATTRIBUTION (Phase 8.5)
+// ------------------------------------------------------------
+//
+// Hard invariant, stated once here as the canonical reference: this
+// subsystem NEVER participates in revenue ownership, revenue
+// calculation, payout calculation, or payout-account selection.
+// Resource.uploadedById remains the sole and exclusive source of
+// revenue ownership, permanently. No query in revenue-period.service.ts
+// or payout.service.ts joins through either model below, and none ever
+// should — if a future change would require that, it must be stopped
+// and treated as a separate, explicitly-approved revenue-architecture
+// decision, not an extension of this one.
+//
+// Referral attribution is metadata about WHERE a view's visitor
+// originated. It is read once, additively, at the same point
+// ResourceView rows are already being created — it never creates a
+// ResourceView by itself, never feeds into isDuplicate/isSelfAccess/
+// isStaffAccess/isBot/isEligible, and never blocks or delays view
+// recording.
+
+enum ReferralLinkStatus {
+  ACTIVE
+  REVOKED
+}
+
+// One permanent, publisher-chosen, human-shareable identity — the
+// "/p/{code}" segment. Publisher-chosen (not derived from email or any
+// private field, not the internal database id) specifically so it's
+// safe to print on flyers and speak aloud, matching the product intent
+// of a durable, memorable marketing link. A publisher may accumulate
+// multiple rows over their lifetime (one per regeneration) — exactly
+// one may be ACTIVE at a time, enforced below at the database level,
+// not just in application code.
+model PublisherReferralLink {
+  id              String             @id @default(cuid())
+  publisherUserId String
+  publisher       User               @relation(fields: [publisherUserId], references: [id], onDelete: Cascade)
+  code            String             @unique
+  status          ReferralLinkStatus @default(ACTIVE)
+  createdAt       DateTime           @default(now())
+  revokedAt       DateTime?
+
+  attributions    ReferralAttribution[]
+
+  // "One ACTIVE link per publisher" is enforced at the database level
+  // via a partial unique index created by raw SQL in the migration
+  // (WHERE status = 'ACTIVE') — Prisma's schema DSL cannot express a
+  // filtered unique constraint directly. Same precedent already used
+  // for PublisherPayoutAccount's equivalent one-active-row guarantee.
+  @@index([publisherUserId])
+  @@index([status])
+}
+
+// Attribution STATE, not an event log — one row represents the
+// currently-active (or historically-superseded) publisher attribution
+// for one anonymous session or one authenticated user. A repeated touch
+// through the SAME publisher's link refreshes `expiresAt` on the
+// existing row; it does not create a new one. A touch through a
+// DIFFERENT publisher's link creates a new row and points the OLD row's
+// `supersededById` at it, preserving history rather than overwriting —
+// this is what lets an already-recorded ResourceView keep pointing at
+// the exact attribution state that was active when it happened,
+// forever, even after that state is later superseded.
+//
+// "Is this row currently active" is deliberately NOT a stored boolean
+// field — it's derived (expiresAt > now(), and no other row's
+// supersededById points away from it as the session/user's newest
+// entry) and always resolved by querying "the newest non-superseded,
+// non-expired row for this session/user" in the service layer, never by
+// trusting a single row's fields in isolation. This avoids a second
+// piece of state (a boolean) that could drift out of sync with the
+// supersession chain it would be describing.
+model ReferralAttribution {
+  id                       String                 @id @default(cuid())
+  publisherReferralLinkId  String
+  publisherReferralLink    PublisherReferralLink  @relation(fields: [publisherReferralLinkId], references: [id], onDelete: Cascade)
+
+  // Exactly one of these two is set. Anonymous, pre-login attribution
+  // keys off the existing gnc_sid cookie value (see
+  // getOrCreateAnalyticsSessionId in analytics-session.ts — no new
+  // cookie mechanism introduced). Once claimed at login (see
+  // claimAttributionOnLogin in referral.service.ts), userId is set on a
+  // NEW row that supersedes the anonymous one; the anonymous row itself
+  // is never mutated, preserving its history.
+  anonymousSessionId       String?
+  userId                   String?
+  user                     User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  startedAt                DateTime               @default(now())
+  expiresAt                DateTime
+  supersededById           String?                @unique
+  supersededBy             ReferralAttribution?   @relation("AttributionSupersession", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes               ReferralAttribution?   @relation("AttributionSupersession")
+
+  views                    ResourceView[]
+
+  // "At most one currently-live attribution per anonymous session" and
+  // "...per authenticated user" are enforced at the database level via
+  // partial unique indexes created by raw SQL in the migration
+  // (Prisma's DSL cannot express a filtered unique constraint),
+  // mirroring PublisherReferralLink's own guarantee above. See
+  // referral.service.ts for the exact WHERE clause used.
+  @@index([anonymousSessionId])
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([publisherReferralLinkId])
+}
+
+// ------------------------------------------------------------
+// How the file bytes actually left the server, at the time the download
+// was recorded. This is not a redundant technicality — it is the
+// difference between a *confirmed* transfer and a merely *authorized*
+// one, and financially-sensitive analytics must not conflate the two.
+enum DownloadDeliveryMethod {
+  // We personally streamed every byte in the HTTP response (the local
+  // storage provider today). The closest thing this architecture has to
+  // a confirmed transfer, though even this cannot prove the client's
+  // network connection didn't drop mid-response.
+  STREAM
+  // We authorized the request and issued a redirect to a time-limited
+  // signed URL (the S3-compatible provider). The actual byte transfer
+  // happens directly between the client and the storage provider,
+  // entirely outside this server's visibility — recording this event
+  // means "a download was authorized and initiated", NOT "the file was
+  // confirmed received".
+  REDIRECT
+}
+
+model ResourceDownload {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  ipHash     String?
+
+  // Required, not defaulted — every call site must state explicitly which
+  // kind of event this is rather than silently defaulting to the
+  // more-confident-sounding option.
+  deliveryMethod DownloadDeliveryMethod
+
+  isSelfAccess   Boolean @default(false) // downloader is the resource's own publisher
+  isStaffAccess  Boolean @default(false) // downloader is ADMIN/SUPER_ADMIN (moderation)
+  isRateLimited  Boolean @default(false) // exceeded the per-IP short-window threshold
+  isEligible     Boolean @default(false) // !self AND !staff AND !rateLimited — feeds Resource.downloadsCount
+
+  // Same reservation as ResourceView.payoutEligible — not used yet. A
+  // future payout phase will likely require `deliveryMethod = STREAM` (or
+  // a separate client-confirmed-receipt signal for REDIRECT deliveries)
+  // before ever setting this to true.
+  payoutEligible Boolean?
+
+  createdAt  DateTime @default(now())
+
+  @@index([resourceId, createdAt])
+  @@index([resourceId, ipHash, createdAt])
+  @@index([resourceId, isEligible])
+}
+
+// ------------------------------------------------------------
+// FAVORITES / FOLLOWS / NOTIFICATIONS
+// ------------------------------------------------------------
+
+model Favorite {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, resourceId])
+}
+
+model Follow {
+  id         String   @id @default(cuid())
+  followerId String
+  follower   User     @relation("FollowerUser", fields: [followerId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     Author   @relation("FollowedAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([followerId, authorId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, read])
+}
+
+// ------------------------------------------------------------
+// REPORTS / MODERATION
+// ------------------------------------------------------------
+
+model Report {
+  id          String       @id @default(cuid())
+  resourceId  String
+  resource    Resource     @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  reportedById String?
+  reportedBy  User?        @relation("ReportedBy", fields: [reportedById], references: [id])
+  type        ReportType
+  message     String?
+  status      ReportStatus @default(OPEN)
+  createdAt   DateTime     @default(now())
+  resolvedAt  DateTime?
+
+  moderationLogs ModerationLog[]
+
+  @@index([status])
+}
+
+// Immutable audit trail — never delete rows here.
+// Generic "actor", not "admin": a PUBLISHER submitting a resource for
+// review also writes a SUBMIT entry here, not only ADMIN actions.
+model ModerationLog {
+  id         String            @id @default(cuid())
+  actorId    String
+  actor      User              @relation("ModerationActor", fields: [actorId], references: [id])
+  resourceId String?
+  resource   Resource?         @relation(fields: [resourceId], references: [id])
+  // Phase 15: the precise reference for RESOLVE_REPORT/DISMISS_REPORT.
+  // `resourceId` alone would be ambiguous the moment a resource has more
+  // than one OPEN report — it tells you *a* report on that resource was
+  // acted on, not *which* one. Both fields are populated together for
+  // these two actions (resourceId kept too, so "moderation history for
+  // this resource" queries via the existing resourceId index still see
+  // report resolutions without a join through Report).
+  reportId   String?
+  report     Report?           @relation(fields: [reportId], references: [id])
+
+  // Phase 17: same precedent as reportId above — a payout-related action
+  // needs its own unambiguous reference rather than overloading an
+  // existing column. Exactly one of these two is set for payout actions;
+  // both are null for every pre-existing action type.
+  payoutAccountId String?
+  payoutId        String?
+
+  // Non-sensitive context only (amount, masked account preview, target
+  // status). NEVER put encryptedDetails, decrypted CCP/RIP values, or
+  // any plaintext payment field in here — this column is read freely by
+  // every admin with moderation-log:view, same as `reason`.
+  metadata   Json?
+
+  action     ModerationAction
+  reason     String?
+  createdAt  DateTime          @default(now())
+
+  @@index([resourceId])
+  @@index([actorId])
+  @@index([reportId])
+  @@index([payoutAccountId])
+  @@index([payoutId])
+}
+
+enum RevenuePeriodStatus {
+  DRAFT
+  FINALIZED
+}
+
+// Pending -> Approved -> Paid is the happy path. Failed is reachable from
+// Approved (e.g. the CCP transfer bounced) — never from Pending, a payout
+// must be reviewed before money moves. See payout.service.ts for the
+// enforced transition table; this enum only declares the valid states.
+enum PayoutStatus {
+  PENDING
+  APPROVED
+  PAID
+  FAILED
+}
+
+// ------------------------------------------------------------
+// PAYOUT SUBSYSTEM (Phase 17)
+// ------------------------------------------------------------
+//
+// Design intent, since this is easy to get wrong: a "payout method" is
+// NOT modeled as one column per field (ccpNumber, ccpKey, ripNumber,
+// ibanNumber, paypalEmail, ...) because that shape has to be redesigned
+// every time a new country/method is added, which is exactly what the
+// product spec says to avoid. Instead:
+//
+//   - `method` names which method this account uses (extensible enum).
+//   - `legalFullName` and `country` are common to every method and stay
+//     as real columns (needed for admin review UI without decrypting).
+//   - Everything method-specific and sensitive (CCP account number, CCP
+//     key/clé, RIP, or a future IBAN/PayPal email/Wise email) lives
+//     inside `encryptedDetails` — a single AES-256-GCM ciphertext of a
+//     JSON payload whose shape depends on `method`. Adding a new method
+//     is: add an enum value + a TS type + UI form. No migration needed
+//     for the new fields themselves.
+//   - `maskedPreview` is a small, non-reversible display string (e.g.
+//     "CCP •••• 5821") computed once at submit time and stored in the
+//     clear, so admin/publisher list views never need to decrypt just to
+//     render a row.
+//
+// See src/server/security/payout-encryption.ts for the encrypt/decrypt
+// implementation and src/server/services/payout-account.service.ts for
+// the only code path allowed to call it.
+
+// Phase 16A: UI interface language, entirely separate from
+// `Resource.language` (which describes what language an academic
+// document is written IN, not what language the interface is shown in).
+// A French article does not become Spanish because the viewer's UI
+// locale is Spanish — see src/lib/i18n/ for the architecture this
+// backs. Direction (RTL for ar, LTR for the rest) is derived from this
+// value in application code (LOCALE_DIRECTION), not stored redundantly
+// here.
+enum Locale {
+  ar
+  fr
+  en
+  es
+}
+
+enum PayoutMethod {
+  CCP_BARIDIMOB // Algérie Poste CCP / Baridi Mob — the only method live today
+  BANK_TRANSFER_INTL // reserved for international IBAN/SWIFT transfers
+  WISE // reserved
+  PAYPAL // reserved
+}
+
+enum PayoutAccountVerificationStatus {
+  PENDING_REVIEW
+  VERIFIED
+  REJECTED
+}
+
+model PublisherPayoutAccount {
+  id              String                          @id @default(cuid())
+  publisherUserId String
+  publisher       User                            @relation(fields: [publisherUserId], references: [id], onDelete: Cascade)
+
+  method          PayoutMethod
+  // Must match the identity on the payment account, not necessarily the
+  // platform display name — admins verify this against the publisher's
+  // application/ID before approving.
+  legalFullName   String
+  country         String                          @default("DZ")
+
+  // AES-256-GCM ciphertext (base64: iv + authTag + ciphertext) of a JSON
+  // blob shaped per `method`. NEVER queried, filtered, or logged in
+  // plaintext. NEVER sent to the client except through the one masked
+  // read path in payout-account.service.ts.
+  encryptedDetails String
+  // Which encryption key encrypted this row — required for key rotation
+  // (rotate PAYOUT_ENCRYPTION_KEY without breaking old rows: keep
+  // decrypting old keyVersions with the retired key while encrypting new
+  // writes with the current one).
+  encryptionKeyVersion Int                         @default(1)
+  // Non-sensitive display string, e.g. "CCP •••• 5821". Computed once at
+  // submit/update time. Safe to render anywhere.
+  maskedPreview   String
+
+  verificationStatus PayoutAccountVerificationStatus @default(PENDING_REVIEW)
+  verifiedById       String?
+  verifiedBy         User?                          @relation("PayoutAccountVerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
+  verifiedAt         DateTime?
+  rejectionReason    String?
+
+  // A publisher may only have one usable account per method at a time;
+  // deactivating (rather than deleting) preserves history for payouts
+  // that already reference this account.
+  isActive        Boolean                         @default(true)
+
+  // Phase 13.5B: which ONE account (across all of the publisher's
+  // methods) finalizeRevenuePeriod should attach to their next payout.
+  // Deliberately separate from `isActive` — `isActive` means "this is
+  // the current row for this method" (one per method), `preferred`
+  // means "use THIS method for the next payout" (at most one across
+  // all methods for the whole publisher). Never set automatically on
+  // submission — see submitPayoutAccount. A row with `preferred = true`
+  // is NOT by itself eligible for selection: finalizeRevenuePeriod must
+  // always additionally require `isActive = true` and
+  // `verificationStatus = VERIFIED` at selection time, since this flag
+  // can point at a row that was later deactivated, replaced, or
+  // rejected without `preferred` being cleared (see the service for
+  // why clearing it eagerly isn't required for correctness).
+  preferred       Boolean                         @default(false)
+
+  createdAt       DateTime                        @default(now())
+  updatedAt       DateTime                        @updatedAt
+
+  payouts         PublisherPayout[]
+
+  // A publisher can hold at most one row per (method, country) while
+  // active — re-submitting supersedes rather than duplicates. This is
+  // enforced at the APPLICATION layer in submitPayoutAccount (deactivate
+  // old + create new in one transaction) AND, as of the Phase 17 payout
+  // audit, at the DATABASE layer by a partial unique index that Prisma's
+  // schema DSL cannot express directly:
+  //   CREATE UNIQUE INDEX ... ON "PublisherPayoutAccount"
+  //     ("publisherUserId", "method") WHERE "isActive" = true;
+  // (see prisma/migrations/20260907020000_add_payout_account_race_guard)
+  // Without the DB-level index, two concurrent submissions under
+  // Postgres's default read-committed isolation could both read "no
+  // active row" and both commit one, leaving two simultaneously-active
+  // accounts — silently wrong, not merely theoretical. The index turns
+  // that race into a clean constraint-violation error on the loser
+  // instead of a corrupted state.
+  //
+  // Phase 13.5B adds a second partial unique index on the same
+  // principle, this time across ALL of a publisher's accounts
+  // regardless of method:
+  //   CREATE UNIQUE INDEX ... ON "PublisherPayoutAccount"
+  //     ("publisherUserId") WHERE "preferred" = true;
+  // (see prisma/migrations/20260909000000_add_payout_account_preferred)
+  // Same race this closes: two concurrent "make this my preferred
+  // account" calls (e.g. two tabs) could otherwise both read "no
+  // preferred row yet" and both commit one, leaving two preferred
+  // accounts — which finalizeRevenuePeriod's query assumes cannot
+  // happen (see setPreferredPayoutAccount for the transaction that
+  // this index backstops).
+  @@index([publisherUserId])
+  @@index([verificationStatus])
+}
+
+model RevenuePeriod {
+  id                String              @id @default(cuid())
+  label             String
+  periodStart       DateTime
+  periodEnd         DateTime
+  // Entered by an admin from the real AdSense payout report for this
+  // period — this app has no AdSense API integration, so this number is
+  // a manual, auditable input, never computed or guessed.
+  totalRevenueCents Int
+  currency          String              @default("DZD")
+  status            RevenuePeriodStatus @default(DRAFT)
+  createdById       String
+  createdBy         User                @relation(fields: [createdById], references: [id])
+  createdAt         DateTime            @default(now())
+  finalizedAt       DateTime?
+  payouts           PublisherPayout[]
+
+  @@index([status])
+}
+
+model PublisherPayout {
+  id                 String        @id @default(cuid())
+  revenuePeriodId    String
+  revenuePeriod      RevenuePeriod @relation(fields: [revenuePeriodId], references: [id], onDelete: Cascade)
+  publisherUserId    String
+  publisher          User          @relation(fields: [publisherUserId], references: [id])
+  eligibleViews      Int
+  totalEligibleViews Int
+  sharePercentage    Decimal       @db.Decimal(7, 4)
+  amountCents        Int
+  currency           String        @default("DZD")
+  status             PayoutStatus  @default(PENDING)
+
+  // Snapshot of the account this payout will be/was sent to — a FK, not
+  // a copy of the sensitive fields. Kept even if the publisher later
+  // edits or deactivates the account, so payout history stays accurate
+  // to what was actually used. Required once a payout leaves DRAFT-like
+  // PENDING review (a payout cannot be approved without a verified
+  // account attached — see payout.service.ts).
+  payoutAccountId    String?
+  payoutAccount      PublisherPayoutAccount? @relation(fields: [payoutAccountId], references: [id], onDelete: SetNull)
+  // Snapshot of the method at payout time (survives the account being
+  // deactivated/changed later) — denormalized on purpose.
+  payoutMethod       PayoutMethod?
+
+  approvedById       String?
+  approver           User?         @relation("PayoutApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt         DateTime?
+
+  // Set only when status = PAID. This is the CCP/Baridi Mob transaction
+  // reference the admin recorded after actually sending the money —
+  // never generated by this app.
+  transactionReference String?
+  paidAt             DateTime?
+
+  failureReason      String?
+  failedAt           DateTime?
+
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@unique([revenuePeriodId, publisherUserId])
+  @@index([publisherUserId])
+  @@index([status])
+  @@index([payoutAccountId])
+}

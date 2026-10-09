@@ -1,0 +1,504 @@
+--- a/src/app/(public)/about/page.tsx
++++ b/src/app/(public)/about/page.tsx
+@@ -18,7 +18,7 @@
+   const t = dict.about;
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="max-w-3xl">
+         <h1 className="mb-6 font-serif text-h1 font-semibold text-globanic-navy">{t.pageTitle}</h1>
+ 
+@@ -91,6 +91,6 @@
+           </p>
+         </section>
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/authors/[slug]/loading.tsx
++++ b/src/app/(public)/authors/[slug]/loading.tsx
+@@ -1,6 +1,6 @@
+ export default function AuthorLoading() {
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="mb-6 h-4 w-40 animate-pulse rounded bg-slate-100" />
+       <div className="mb-6 flex items-center gap-4">
+         <div className="h-16 w-16 animate-pulse rounded-full bg-slate-100" />
+@@ -14,6 +14,6 @@
+           <div key={i} className="h-32 animate-pulse rounded border border-slate-100 bg-slate-50" />
+         ))}
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/authors/[slug]/page.tsx
++++ b/src/app/(public)/authors/[slug]/page.tsx
+@@ -70,7 +70,7 @@
+   });
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <JsonLd data={buildAuthorJsonLd(author, absoluteUrl(`/authors/${params.slug}`))} />
+ 
+       <nav aria-label={dict.common.breadcrumbNav} className="mb-6 flex flex-wrap items-center gap-1 text-body-sm text-slate-500">
+@@ -137,6 +137,6 @@
+       )}
+ 
+       <ResourceListPagination page={page} hasMore={hasMore} />
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/authors/loading.tsx
++++ b/src/app/(public)/authors/loading.tsx
+@@ -1,6 +1,6 @@
+ export default function AuthorsLoading() {
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="mb-6 h-7 w-32 animate-pulse rounded bg-slate-100" />
+       <div className="grid grid-cols-1 divide-y divide-slate-100 border-t border-slate-100 sm:grid-cols-2">
+         {Array.from({ length: 8 }).map((_, i) => (
+@@ -13,6 +13,6 @@
+           </div>
+         ))}
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/authors/page.tsx
++++ b/src/app/(public)/authors/page.tsx
+@@ -40,7 +40,7 @@
+   });
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <h1 className="mb-6 text-h2 font-semibold text-globanic-navy">{dict.nav.authors}</h1>
+ 
+       {authors.length === 0 ? (
+@@ -73,6 +73,6 @@
+       )}
+ 
+       <ResourceListPagination page={page} hasMore={hasMore} />
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/contact/page.tsx
++++ b/src/app/(public)/contact/page.tsx
+@@ -42,7 +42,7 @@
+   const CATEGORIES = buildCategories(dict);
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="max-w-3xl">
+         <h1 className="mb-4 font-serif text-h1 font-semibold text-globanic-navy">{dict.contact.pageTitle}</h1>
+         <p className="mb-8 text-body leading-relaxed text-slate-700">
+@@ -70,6 +70,6 @@
+           {dict.contact.emailPendingNotice}
+         </div>
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/domains/[slug]/loading.tsx
++++ b/src/app/(public)/domains/[slug]/loading.tsx
+@@ -1,6 +1,6 @@
+ export default function DomainLoading() {
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="mb-6 h-4 w-40 animate-pulse rounded bg-slate-100" />
+       <div className="mb-2 h-7 w-48 animate-pulse rounded bg-slate-100" />
+       <div className="mb-8 h-4 w-24 animate-pulse rounded bg-slate-100" />
+@@ -14,6 +14,6 @@
+           <div key={i} className="h-32 animate-pulse rounded border border-slate-100 bg-slate-50" />
+         ))}
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/domains/[slug]/page.tsx
++++ b/src/app/(public)/domains/[slug]/page.tsx
+@@ -75,7 +75,7 @@
+   ]);
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <nav aria-label={dict.common.breadcrumbNav} className="mb-6 flex flex-wrap items-center gap-1 text-body-sm text-slate-500">
+         <Link href="/" className="hover:text-globanic-blue">Globanic</Link>
+         <span aria-hidden="true" className="text-slate-300">/</span>
+@@ -189,6 +189,6 @@
+           </div>
+         </section>
+       )}
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/domains/loading.tsx
++++ b/src/app/(public)/domains/loading.tsx
+@@ -1,6 +1,6 @@
+ export default function DomainsLoading() {
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="mb-6 h-7 w-48 animate-pulse rounded bg-slate-100" />
+       <div className="grid grid-cols-1 divide-y divide-slate-100 border-t border-slate-100 sm:grid-cols-2">
+         {Array.from({ length: 8 }).map((_, i) => (
+@@ -10,6 +10,6 @@
+           </div>
+         ))}
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/domains/page.tsx
++++ b/src/app/(public)/domains/page.tsx
+@@ -20,7 +20,7 @@
+   const domains = await listDomainsWithResourceCounts();
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <h1 className="mb-6 text-h2 font-semibold text-globanic-navy">{dict.domain.exploreHeading}</h1>
+ 
+       {domains.length === 0 ? (
+@@ -41,6 +41,6 @@
+           ))}
+         </ul>
+       )}
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/faculties/[id]/loading.tsx
++++ b/src/app/(public)/faculties/[id]/loading.tsx
+@@ -1,6 +1,6 @@
+ export default function FacultyLoading() {
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="mb-6 h-4 w-64 animate-pulse rounded bg-slate-100" />
+       <div className="mb-2 h-7 w-56 animate-pulse rounded bg-slate-100" />
+       <div className="mb-8 h-4 w-40 animate-pulse rounded bg-slate-100" />
+@@ -9,6 +9,6 @@
+           <div key={i} className="h-32 animate-pulse rounded border border-slate-100 bg-slate-50" />
+         ))}
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/faculties/[id]/page.tsx
++++ b/src/app/(public)/faculties/[id]/page.tsx
+@@ -64,7 +64,7 @@
+   });
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <nav aria-label={dict.common.breadcrumbNav} className="mb-6 flex flex-wrap items-center gap-1 text-body-sm text-slate-500">
+         <Link href="/" className="hover:text-globanic-blue">Globanic</Link>
+         <span aria-hidden="true" className="text-slate-300">/</span>
+@@ -98,6 +98,6 @@
+         </div>
+       )}
+       <ResourceListPagination page={page} hasMore={hasMore} />
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/help/page.tsx
++++ b/src/app/(public)/help/page.tsx
+@@ -142,7 +142,7 @@
+   const FAQS = buildFaqs(dict);
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="max-w-3xl">
+         <h1 className="mb-6 font-serif text-h1 font-semibold text-globanic-navy">{dict.help.pageTitle}</h1>
+         <p className="mb-8 text-body leading-relaxed text-slate-700">
+@@ -172,6 +172,6 @@
+           ))}
+         </div>
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/i18n-preview/page.tsx
++++ b/src/app/(public)/i18n-preview/page.tsx
+@@ -44,7 +44,7 @@
+     : null;
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="mx-auto max-w-2xl">
+         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+           <h1 className="font-serif text-h1 font-semibold text-globanic-navy">{t.title}</h1>
+@@ -105,6 +105,6 @@
+           )}
+         </div>
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/publisher-guidelines/page.tsx
++++ b/src/app/(public)/publisher-guidelines/page.tsx
+@@ -19,7 +19,7 @@
+   const g = dict.publisherGuidelines;
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="max-w-3xl">
+         <h1 className="mb-2 font-serif text-h1 font-semibold text-globanic-navy">{g.pageTitle}</h1>
+         <p className="mb-8 text-body leading-relaxed text-slate-700">
+@@ -102,6 +102,6 @@
+           </section>
+         </div>
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/publishers/[id]/loading.tsx
++++ b/src/app/(public)/publishers/[id]/loading.tsx
+@@ -1,6 +1,6 @@
+ export default function PublisherLoading() {
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="mb-6 h-4 w-32 animate-pulse rounded bg-slate-100" />
+       <div className="mb-8 flex items-center gap-4">
+         <div className="h-16 w-16 animate-pulse rounded-full bg-slate-100" />
+@@ -14,6 +14,6 @@
+           <div key={i} className="h-32 animate-pulse rounded border border-slate-100 bg-slate-50" />
+         ))}
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/publishers/[id]/page.tsx
++++ b/src/app/(public)/publishers/[id]/page.tsx
+@@ -60,7 +60,7 @@
+   });
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <nav aria-label={dict.common.breadcrumbNav} className="mb-6 flex flex-wrap items-center gap-1 text-body-sm text-slate-500">
+         <Link href="/" className="hover:text-globanic-blue">Globanic</Link>
+         <span aria-hidden="true" className="text-slate-300">/</span>
+@@ -99,6 +99,6 @@
+       )}
+ 
+       <ResourceListPagination page={page} hasMore={hasMore} />
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/resources/[type]/page.tsx
++++ b/src/app/(public)/resources/[type]/page.tsx
+@@ -99,7 +99,7 @@
+     : dict.search.noPublishedResourcesOfType.replace("{type}", typeLabel);
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <header className="mb-8">
+         <h1 className={`mb-2 text-h2 font-semibold text-globanic-navy ${isArticle ? "font-serif" : ""}`}>
+           {isArticle ? dict.nav.articles : typeLabel}
+@@ -196,6 +196,6 @@
+       )}
+ 
+       <ResourceListPagination page={page} hasMore={hasMore} />
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/resources/page.tsx
++++ b/src/app/(public)/resources/page.tsx
+@@ -44,7 +44,7 @@
+   ]);
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <h1 className="mb-6 text-h2 font-semibold text-globanic-navy">{dict.search.allResourcesTitle}</h1>
+ 
+       <nav aria-label={dict.search.filterByDomain} role="tablist" className="mb-8 flex flex-wrap gap-1 overflow-x-auto border-b border-slate-100">
+@@ -86,6 +86,6 @@
+       )}
+ 
+       <ResourceListPagination page={page} hasMore={hasMore} />
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/trust/page.tsx
++++ b/src/app/(public)/trust/page.tsx
+@@ -18,7 +18,7 @@
+   const t = dict.trust;
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="max-w-3xl">
+         <h1 className="mb-2 font-serif text-h1 font-semibold text-globanic-navy">
+           {t.pageTitle}
+@@ -85,6 +85,6 @@
+           </section>
+         </div>
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/universities/[slug]/loading.tsx
++++ b/src/app/(public)/universities/[slug]/loading.tsx
+@@ -1,6 +1,6 @@
+ export default function UniversityLoading() {
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="mb-6 h-4 w-56 animate-pulse rounded bg-slate-100" />
+       <div className="mb-8 flex items-center gap-4">
+         <div className="h-16 w-16 animate-pulse rounded bg-slate-100" />
+@@ -14,6 +14,6 @@
+           <div key={i} className="h-32 animate-pulse rounded border border-slate-100 bg-slate-50" />
+         ))}
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/universities/[slug]/page.tsx
++++ b/src/app/(public)/universities/[slug]/page.tsx
+@@ -79,7 +79,7 @@
+   });
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <JsonLd data={buildUniversityJsonLd(university, absoluteUrl(`/universities/${params.slug}`))} />
+ 
+       <nav aria-label={dict.common.breadcrumbNav} className="mb-6 flex flex-wrap items-center gap-1 text-body-sm text-slate-500">
+@@ -168,6 +168,6 @@
+         )}
+         <ResourceListPagination page={page} hasMore={hasMore} />
+       </section>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/universities/loading.tsx
++++ b/src/app/(public)/universities/loading.tsx
+@@ -1,6 +1,6 @@
+ export default function UniversitiesLoading() {
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="mb-6 h-7 w-32 animate-pulse rounded bg-slate-100" />
+       <div className="divide-y divide-slate-100 border-t border-slate-100">
+         {Array.from({ length: 8 }).map((_, i) => (
+@@ -13,6 +13,6 @@
+           </div>
+         ))}
+       </div>
+-    </main>
++    </div>
+   );
+ }
+--- a/src/app/(public)/universities/page.tsx
++++ b/src/app/(public)/universities/page.tsx
+@@ -40,7 +40,7 @@
+   });
+ 
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <h1 className="mb-6 text-h2 font-semibold text-globanic-navy">{dict.nav.universities}</h1>
+ 
+       {universities.length === 0 ? (
+@@ -71,6 +71,6 @@
+       )}
+ 
+       <ResourceListPagination page={page} hasMore={hasMore} />
+-    </main>
++    </div>
+   );
+ }
+--- a/src/components/i18n/LanguageSwitcher.tsx
++++ b/src/components/i18n/LanguageSwitcher.tsx
+@@ -3,7 +3,7 @@
+ import { useTransition } from "react";
+ import { useRouter } from "next/navigation";
+ import { SUPPORTED_LOCALES, LOCALE_LABEL } from "@/lib/i18n/config";
+-import { useLocale } from "@/components/i18n/I18nProvider";
++import { useLocale, useTranslations } from "@/components/i18n/I18nProvider";
+ import { setPreferredLocaleAction } from "@/server/actions/locale.actions";
+ 
+ /**
+@@ -23,6 +23,7 @@
+   const current = useLocale();
+   const [pending, startTransition] = useTransition();
+   const router = useRouter();
++  const t = useTranslations("common");
+ 
+   function handleSelect(locale: string) {
+     if (locale === current) return;
+@@ -33,7 +34,7 @@
+   }
+ 
+   return (
+-    <div className="flex items-center gap-1" aria-label="اختيار اللغة / Language">
++    <div className="flex items-center gap-1" role="group" aria-label={t("language")}>
+       {SUPPORTED_LOCALES.map((locale) => (
+         <button
+           key={locale}
+--- a/src/components/layout/AccountMenu.tsx
++++ b/src/components/layout/AccountMenu.tsx
+@@ -58,6 +58,7 @@
+         onClick={() => setOpen((v) => !v)}
+         aria-expanded={open}
+         aria-haspopup="menu"
++        aria-label={displayName}
+         className="flex items-center gap-2 rounded p-1 hover:bg-slate-100"
+       >
+         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-globanic-navy text-body-sm font-semibold text-white">
+--- a/src/components/resources/ResourcesListSkeleton.tsx
++++ b/src/components/resources/ResourcesListSkeleton.tsx
+@@ -1,6 +1,6 @@
+ export function ResourcesListSkeleton() {
+   return (
+-    <main className="container-page py-10">
++    <div className="container-page py-10">
+       <div className="mb-6 h-7 w-40 animate-pulse rounded bg-slate-100" />
+       <div className="mb-8 flex gap-2 border-b border-slate-100 pb-3">
+         {Array.from({ length: 5 }).map((_, i) => (
+@@ -12,6 +12,6 @@
+           <div key={i} className="h-32 animate-pulse rounded border border-slate-100 bg-slate-50" />
+         ))}
+       </div>
+-    </main>
++    </div>
+   );
+ }

@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Phase 1 base layer. Two rules going forward for the rest of this
+ * redesign, enforced here rather than left to convention:
+ *
+ * 1. Use CSS LOGICAL properties, not physical left/right ones, in any
+ *    new component: `ms-*`/`me-*` (margin-inline-start/end) and
+ *    `ps-*`/`pe-*` (padding-inline-start/end) instead of `ml-*`/`mr-*`/
+ *    `pl-*`/`pr-*`. Tailwind supports these natively. Physical
+ *    left/right utilities silently do the wrong thing the moment a
+ *    page renders under dir="rtl", which is the DEFAULT direction for
+ *    this app now (see layout.tsx) — this is not a minor style
+ *    preference, it is the specific bug class the earlier UI audit
+ *    found in AdminSidebar.tsx (hardcoded border-l on an Arabic-content
+ *    sidebar).
+ * 2. Reach for `text-slate-*`, not `text-gray-*` — see the comment on
+ *    the `slate` color scale in tailwind.config.ts.
+ */
+
+@layer base {
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    /* IBM Plex Sans / IBM Plex Sans Arabic fallback chain, set via
+       font-sans on <body> in layout.tsx together with the variable
+       classNames from fonts.ts. */
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  h1, h2, h3, h4 {
+    @apply font-sans font-semibold text-globanic-navy;
+  }
+
+  /* Editorial contexts (article bodies, About-page storytelling) opt
+     into the serif pair explicitly with `font-serif` — never the
+     default for headings site-wide. */
+
+  ::selection {
+    @apply bg-globanic-blueLight/25;
+  }
+
+  /* A single, consistent focus style everywhere, instead of each
+     component inventing its own (or, worse, silently suppressing the
+     outline). Visible on every interactive element, keyboard or not —
+     :focus-visible skips it for mouse clicks where it isn't useful. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-globanic-blue ring-offset-2 ring-offset-white;
+  }
+}
+
+@layer components {
+  /* The shared page container width — replaces ad hoc max-w-5xl /
+     max-w-2xl / max-w-3xl scattered per page (see tailwind.config's
+     `content` maxWidth token). */
+  .container-page {
+    @apply mx-auto w-full max-w-content px-4 sm:px-6 lg:px-8;
+  }
+}

@@ -1,0 +1,654 @@
+// ============================================================
+// GLOBANIC — Database Schema (Prisma / PostgreSQL)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------
+// ENUMS
+// ------------------------------------------------------------
+
+enum Role {
+  USER
+  PUBLISHER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum PublisherApplicationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  SUSPENDED
+}
+
+enum ResourceType {
+  COURS
+  MEMOIRE
+  ARTICLE
+  THESE
+  LIVRE
+}
+
+enum ResourceStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  PUBLISHED
+  REJECTED
+  CHANGES_REQUESTED
+  UNPUBLISHED
+}
+
+enum ReportType {
+  COPYRIGHT
+  SPAM
+  INCORRECT_INFO
+  BROKEN_FILE
+  INAPPROPRIATE
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum ModerationAction {
+  SUBMIT
+  APPROVE
+  REJECT
+  REQUEST_CHANGES
+  UNPUBLISH
+  DELETE
+  VERIFY_PUBLISHER
+  REJECT_PUBLISHER
+  SUSPEND_PUBLISHER
+  SUSPEND_USER
+  ACTIVATE_USER
+  CHANGE_ROLE
+  RESOLVE_REPORT
+  DISMISS_REPORT
+  CREATE_UNIVERSITY
+  UPDATE_UNIVERSITY
+  DELETE_UNIVERSITY
+  CREATE_DOMAIN
+  UPDATE_DOMAIN
+  DELETE_DOMAIN
+}
+
+enum NotificationType {
+  RESOURCE_APPROVED
+  RESOURCE_REJECTED
+  RESOURCE_CHANGES_REQUESTED
+  RESOURCE_MILESTONE
+  NEW_FOLLOWER
+  PUBLISHER_VERIFIED
+  PUBLISHER_REJECTED
+  PUBLISHER_SUSPENDED
+  REPORT_UPDATE
+  SYSTEM
+}
+
+// ------------------------------------------------------------
+// USERS / PROFILES / PUBLISHERS
+// ------------------------------------------------------------
+
+model User {
+  id            String        @id @default(cuid())
+  email         String        @unique
+  passwordHash  String?
+  role          Role          @default(USER)
+  status        AccountStatus @default(ACTIVE)
+  emailVerified DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  profile             Profile?
+  publisherProfile    PublisherProfile?
+  publisherApplications PublisherApplication[]
+  reviewedApplications  PublisherApplication[] @relation("ApplicationReviewedBy")
+  authorLink          AuthorUser?
+  resourcesUploaded   Resource[]        @relation("UploadedBy")
+  resourceVersions    ResourceVersion[] @relation("VersionCreatedBy")
+  favorites           Favorite[]
+  followingAuthors    Follow[]          @relation("FollowerUser")
+  notifications       Notification[]
+  reports             Report[]          @relation("ReportedBy")
+  moderationLogs      ModerationLog[]   @relation("ModerationActor")
+  views               ResourceView[]
+  downloads           ResourceDownload[]
+  sessions            Session[]
+  accounts            Account[]
+
+  @@index([role])
+  @@index([status])
+}
+
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName    String
+  avatarUrl   String?
+  bio         String?
+  country     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PublisherProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  academicStatus  String?
+  universityId    String?
+  university      University? @relation(fields: [universityId], references: [id], onDelete: SetNull)
+  specialtyId     String?
+  specialty       Specialty?  @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  academicEmail   String?
+  verifiedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model PublisherApplication {
+  id                 String                      @id @default(cuid())
+  userId             String
+  user               User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName           String
+  universityId       String?
+  university         University?                 @relation(fields: [universityId], references: [id], onDelete: SetNull)
+  academicStatus     String
+  specialtyId        String?
+  specialty          Specialty?                  @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  academicEmail      String
+  additionalInfo     String?
+
+  proofFileKey         String?
+  proofFileUrl         String?
+  proofFileMimeType    String?
+  proofFileSize        Int?
+  proofFileChecksum    String?
+  proofOriginalFilename String?
+
+  status             PublisherApplicationStatus  @default(PENDING)
+  reviewedById       String?
+  reviewedBy         User?                       @relation("ApplicationReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt         DateTime?
+  rejectionReason    String?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  @@index([status])
+  @@index([userId])
+}
+
+// NextAuth-compatible tables (Auth.js)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+}
+
+// ------------------------------------------------------------
+// AUTHORS (independent from User)
+// ------------------------------------------------------------
+
+model Author {
+  id           String       @id @default(cuid())
+  slug         String       @unique
+  fullName     String
+  bio          String?
+  avatarUrl    String?
+  verified     Boolean      @default(false)
+  universityId String?
+  university   University?  @relation(fields: [universityId], references: [id])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  userLink        AuthorUser?
+  resources       ResourceAuthor[]
+  followers       Follow[]         @relation("FollowedAuthor")
+
+  @@index([universityId])
+}
+
+// Optional link Author <-> User (Author is NOT necessarily a User)
+model AuthorUser {
+  id       String @id @default(cuid())
+  authorId String @unique
+  author   Author @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------------------------------------
+// UNIVERSITIES / FACULTIES
+// ------------------------------------------------------------
+
+model University {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  name            String
+  city            String?
+  country         String?
+  logoUrl         String?
+  officialWebsite String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  faculties             Faculty[]
+  resources             Resource[]
+  authors               Author[]
+  publisherProfiles     PublisherProfile[]
+  publisherApplications PublisherApplication[]
+
+  @@index([country])
+}
+
+model Faculty {
+  id           String     @id @default(cuid())
+  name         String
+  universityId String
+  university   University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  resources    Resource[]
+
+  @@index([universityId])
+}
+
+// ------------------------------------------------------------
+// DOMAINS / SPECIALTIES
+// ------------------------------------------------------------
+
+model Domain {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  icon      String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  specialties Specialty[]
+  resources   Resource[]
+}
+
+model Specialty {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  domainId  String
+  domain    Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  order     Int      @default(0)
+
+  resources             Resource[]
+  publisherProfiles     PublisherProfile[]
+  publisherApplications PublisherApplication[]
+
+  @@index([domainId])
+}
+
+// Independent tagging axis, orthogonal to Domain/Specialty — e.g.
+// "Accès libre", "À la une", "Ressource recommandée". Many-to-many so a
+// resource can carry several tags without affecting its academic classification.
+model Category {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  resources ResourceCategory[]
+}
+
+model ResourceCategory {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, categoryId])
+  @@index([categoryId])
+}
+
+// ------------------------------------------------------------
+// RESOURCES (core entity)
+// ------------------------------------------------------------
+
+model Resource {
+  id            String         @id @default(cuid())
+  slug          String
+  type          ResourceType
+  title         String
+  abstract      String?
+  description   String?
+  keywords      String[]
+  level         String?
+  year          Int?
+  language      String?
+  status        ResourceStatus @default(DRAFT)
+  rejectionReason String?
+
+  domainId      String?
+  domain        Domain?        @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  specialtyId   String?
+  specialty     Specialty?     @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  universityId  String?
+  university    University?    @relation(fields: [universityId], references: [id], onDelete: SetNull)
+  facultyId     String?
+  faculty       Faculty?       @relation(fields: [facultyId], references: [id], onDelete: SetNull)
+
+  // Restrict: a user who has published resources cannot be hard-deleted —
+  // admins suspend accounts instead (status = SUSPENDED / DELETED), which
+  // keeps authorship and moderation history intact.
+  uploadedById  String
+  uploadedBy    User           @relation("UploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  coverImageKey        String?
+  coverImageUrl        String?
+  coverImageMimeType   String?
+  coverImageSize       Int?
+  coverImageChecksum   String?
+  copyrightConfirmedAt DateTime?
+
+  // Denormalized counters (recalculated periodically from tracking tables)
+  viewsCount     Int @default(0)
+  downloadsCount Int @default(0)
+  bookmarksCount Int @default(0)
+
+  // GENERATED ALWAYS AS (...) STORED tsvector, weighted title > keywords >
+  // abstract > description. Prisma's `Unsupported()` type intentionally
+  // means Prisma never manages this column's actual definition or its GIN
+  // index — both are owned entirely by
+  // prisma/migrations/20260821000000_add_resource_search_vector/migration.sql.
+  // `prisma migrate dev`/`generate` will never attempt to alter or revert
+  // it, by design of `Unsupported()`. See search.service.ts / postgres.provider.ts.
+  searchVector  Unsupported("tsvector")?
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  publishedAt   DateTime?
+
+  authors       ResourceAuthor[]
+  categories    ResourceCategory[]
+  versions      ResourceVersion[]
+  favorites     Favorite[]
+  reports       Report[]
+  moderationLogs ModerationLog[]
+  views         ResourceView[]
+  downloads     ResourceDownload[]
+
+  @@unique([type, slug])
+  @@index([status])
+  @@index([type])
+  @@index([domainId])
+  @@index([specialtyId])
+  @@index([universityId])
+  @@index([facultyId])
+  @@index([uploadedById])
+  @@index([publishedAt])
+  @@index([createdAt])
+  // Common publisher-dashboard query: "my resources with this status,
+  // most recent first" — composite index avoids a sort on the whole set.
+  @@index([uploadedById, status, createdAt])
+}
+
+// Many-to-many Resource <-> Author (supports multiple authors, ordered)
+model ResourceAuthor {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     Author   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  order      Int      @default(0)
+
+  @@unique([resourceId, authorId])
+  @@index([authorId])
+}
+
+// Versioning — never delete previous file versions
+model ResourceVersion {
+  id            String   @id @default(cuid())
+  resourceId    String
+  resource      Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  changeNote    String?
+  createdById   String
+  createdBy     User     @relation("VersionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt     DateTime @default(now())
+
+  file ResourceFile?
+
+  @@unique([resourceId, versionNumber])
+}
+
+model ResourceFile {
+  id                String          @id @default(cuid())
+  resourceVersionId String          @unique
+  resourceVersion   ResourceVersion @relation(fields: [resourceVersionId], references: [id], onDelete: Cascade)
+  storageKey        String
+  fileUrl           String
+  originalFilename  String?
+  mimeType          String
+  fileSize          Int
+  checksum          String
+  createdAt         DateTime        @default(now())
+}
+
+// ------------------------------------------------------------
+// TRACKING (real analytics, not counters++)
+// ------------------------------------------------------------
+
+// A "view" is financially sensitive data: it may eventually feed publisher
+// payouts. Every row is kept forever (raw layer, never deleted/overwritten)
+// regardless of eligibility — nothing is silently dropped. The flags below
+// let reads distinguish Raw (every row) / Valid (not a dedup duplicate) /
+// Eligible (valid AND not self AND not staff AND not a bot) without ever
+// destroying the underlying event. `Resource.viewsCount` only increments
+// for isEligible = true rows (see analytics-tracking.service.ts).
+model ResourceView {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  sessionId  String
+  ipHash     String?
+  country    String?
+  device     String?
+  referrer   String?
+
+  isDuplicate  Boolean @default(false) // same (resourceId, sessionId) within the dedup window
+  isSelfAccess Boolean @default(false) // viewer is the resource's own publisher
+  isStaffAccess Boolean @default(false) // viewer is ADMIN/SUPER_ADMIN (moderation, not audience)
+  isBot        Boolean @default(false) // basic User-Agent heuristic
+  isEligible   Boolean @default(false) // valid AND !self AND !staff AND !bot — feeds Resource.viewsCount
+
+  // Deliberately separate from `isEligible`. `isEligible` only answers
+  // "does this count as a real audience view" (anti-fraud/dedup). A future
+  // payout phase will almost certainly need additional rules on top of
+  // that (minimum watch time, geographic eligibility, payout-period
+  // windows, etc.) — this column reserves that concept without building
+  // it. NEVER computed, read, or relied upon before that phase exists.
+  payoutEligible Boolean?
+
+  createdAt  DateTime @default(now())
+
+  @@index([resourceId, createdAt])
+  @@index([resourceId, sessionId, createdAt])
+  @@index([resourceId, isEligible])
+}
+
+// How the file bytes actually left the server, at the time the download
+// was recorded. This is not a redundant technicality — it is the
+// difference between a *confirmed* transfer and a merely *authorized*
+// one, and financially-sensitive analytics must not conflate the two.
+enum DownloadDeliveryMethod {
+  // We personally streamed every byte in the HTTP response (the local
+  // storage provider today). The closest thing this architecture has to
+  // a confirmed transfer, though even this cannot prove the client's
+  // network connection didn't drop mid-response.
+  STREAM
+  // We authorized the request and issued a redirect to a time-limited
+  // signed URL (the S3-compatible provider). The actual byte transfer
+  // happens directly between the client and the storage provider,
+  // entirely outside this server's visibility — recording this event
+  // means "a download was authorized and initiated", NOT "the file was
+  // confirmed received".
+  REDIRECT
+}
+
+model ResourceDownload {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  ipHash     String?
+
+  // Required, not defaulted — every call site must state explicitly which
+  // kind of event this is rather than silently defaulting to the
+  // more-confident-sounding option.
+  deliveryMethod DownloadDeliveryMethod
+
+  isSelfAccess   Boolean @default(false) // downloader is the resource's own publisher
+  isStaffAccess  Boolean @default(false) // downloader is ADMIN/SUPER_ADMIN (moderation)
+  isRateLimited  Boolean @default(false) // exceeded the per-IP short-window threshold
+  isEligible     Boolean @default(false) // !self AND !staff AND !rateLimited — feeds Resource.downloadsCount
+
+  // Same reservation as ResourceView.payoutEligible — not used yet. A
+  // future payout phase will likely require `deliveryMethod = STREAM` (or
+  // a separate client-confirmed-receipt signal for REDIRECT deliveries)
+  // before ever setting this to true.
+  payoutEligible Boolean?
+
+  createdAt  DateTime @default(now())
+
+  @@index([resourceId, createdAt])
+  @@index([resourceId, ipHash, createdAt])
+  @@index([resourceId, isEligible])
+}
+
+// ------------------------------------------------------------
+// FAVORITES / FOLLOWS / NOTIFICATIONS
+// ------------------------------------------------------------
+
+model Favorite {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, resourceId])
+}
+
+model Follow {
+  id         String   @id @default(cuid())
+  followerId String
+  follower   User     @relation("FollowerUser", fields: [followerId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     Author   @relation("FollowedAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([followerId, authorId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, read])
+}
+
+// ------------------------------------------------------------
+// REPORTS / MODERATION
+// ------------------------------------------------------------
+
+model Report {
+  id          String       @id @default(cuid())
+  resourceId  String
+  resource    Resource     @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  reportedById String?
+  reportedBy  User?        @relation("ReportedBy", fields: [reportedById], references: [id])
+  type        ReportType
+  message     String?
+  status      ReportStatus @default(OPEN)
+  createdAt   DateTime     @default(now())
+  resolvedAt  DateTime?
+
+  moderationLogs ModerationLog[]
+
+  @@index([status])
+}
+
+// Immutable audit trail — never delete rows here.
+// Generic "actor", not "admin": a PUBLISHER submitting a resource for
+// review also writes a SUBMIT entry here, not only ADMIN actions.
+model ModerationLog {
+  id         String            @id @default(cuid())
+  actorId    String
+  actor      User              @relation("ModerationActor", fields: [actorId], references: [id])
+  resourceId String?
+  resource   Resource?         @relation(fields: [resourceId], references: [id])
+  // Phase 15: the precise reference for RESOLVE_REPORT/DISMISS_REPORT.
+  // `resourceId` alone would be ambiguous the moment a resource has more
+  // than one OPEN report — it tells you *a* report on that resource was
+  // acted on, not *which* one. Both fields are populated together for
+  // these two actions (resourceId kept too, so "moderation history for
+  // this resource" queries via the existing resourceId index still see
+  // report resolutions without a join through Report).
+  reportId   String?
+  report     Report?           @relation(fields: [reportId], references: [id])
+  action     ModerationAction
+  reason     String?
+  createdAt  DateTime          @default(now())
+
+  @@index([resourceId])
+  @@index([actorId])
+  @@index([reportId])
+}
